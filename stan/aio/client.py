@@ -54,6 +54,32 @@ DEFAULT_PING_MAX_OUT = 3
 
 logger = logging.getLogger(__name__)
 
+#https://stackoverflow.com/questions/55774054/precise-time-in-nano-seconds-for-python-3-6-and-earlier
+try:
+    #python >= 3.7
+    from time import time_ns
+    
+except ImportError:
+    import ctypes
+    CLOCK_REALTIME = 0
+    class timespec(ctypes.Structure):
+        _fields_ = [
+            ('tv_sec', ctypes.c_int64), # seconds, https://stackoverflow.com/q/471248/1672565
+            ('tv_nsec', ctypes.c_int64), # nanoseconds
+            ]
+
+    clock_gettime = ctypes.cdll.LoadLibrary('libc.so.6').clock_gettime
+    clock_gettime.argtypes = [ctypes.c_int64, ctypes.POINTER(timespec)]
+    clock_gettime.restype = ctypes.c_int64    
+
+    def time_ns():
+        tmp = timespec()
+        ret = clock_gettime(CLOCK_REALTIME, ctypes.pointer(tmp))
+        if bool(ret):
+            raise OSError()
+        return tmp.tv_sec * 10 ** 9 + tmp.tv_nsec
+
+    
 class Client:
     """
     Asyncio Client for NATS Streaming.
@@ -498,7 +524,7 @@ class Client:
             if timedelta == True:
                 req.startTimeDelta = int(now() - time) * 1000000000
             else:
-                req.startTimeDelta = time
+                req.startTimeDelta = int(time_ns()-time)
         elif start_at == 'sequence':
             req.startPosition = protocol.SequenceStart
             req.startSequence = sequence
